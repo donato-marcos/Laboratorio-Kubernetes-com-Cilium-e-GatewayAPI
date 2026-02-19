@@ -256,7 +256,8 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ```
 ```bash
 kubectl completion bash | sudo tee /etc/bash_completion.d/kubectl > /dev/null
-sudo chmod a+r /etc/bash_completion.d/kubectl
+kubeadm completion bash | sudo tee /etc/bash_completion.d/kubeadm > /dev/null
+sudo chmod a+r /etc/bash_completion.d/*
 source ~/.bashrc
 ```
 
