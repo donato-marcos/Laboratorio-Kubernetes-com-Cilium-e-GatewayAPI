@@ -258,10 +258,18 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 kubectl completion bash | sudo tee /etc/bash_completion.d/kubectl > /dev/null
 kubeadm completion bash | sudo tee /etc/bash_completion.d/kubeadm > /dev/null
 kubelet completion bash | sudo tee /etc/bash_completion.d/kubelet > /dev/null
+crictl completion bash | sudo tee /etc/bash_completion.d/crictl > /dev/null
 sudo chmod a+r /etc/bash_completion.d/*
 source ~/.bashrc
 ```
-
+```bash
+cat << EOF | sudo tee /etc/crictl.yaml
+runtime-endpoint: unix:///var/run/containerd/containerd.sock
+image-endpoint: unix:///var/run/containerd/containerd.sock
+timeout: 10
+debug: true
+EOF
+```
 ### 2. Worker Nodes
 
 **No Master, gere o comando de join:**  
