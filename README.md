@@ -164,19 +164,26 @@ sudo modprobe br_netfilter
 
 # 4. Sysctl para Rede
 cat <<EOF | sudo tee /etc/sysctl.d/99-kubernetes-cri.conf
-net.bridge.bridge-nf-call-iptables  = 1
-net.ipv4.ip_forward                 = 1
+# Habilitar Forwarding (Roteamento)
+net.ipv4.ip_forward = 1
+net.ipv6.conf.all.forwarding = 1
+
+# Garantir que IPv6 não esteja desabilitado no kernel
+net.ipv6.conf.all.disable_ipv6 = 0
+net.ipv6.conf.default.disable_ipv6 = 0
+
+# CRÍTICO: Fazer bridges respeitarem as regras de firewall do K8s
+net.bridge.bridge-nf-call-iptables = 1
 net.bridge.bridge-nf-call-ip6tables = 1
 EOF
 sudo sysctl --system
-sudo sysctl --system | grep -E "forward|ip.*tables"
 ```
 
 ### 2. Instalação e Configuração do Containerd
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y ca-certificates curl gpg gnupg bash-completion
+sudo apt-get install -y ca-certificates curl gpg gnupg
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
@@ -208,6 +215,26 @@ sudo apt-get install -y kubelet kubeadm kubectl
 sudo apt-mark hold kubelet kubeadm kubectl
 ```
 
+### 4. Configurações extrar para ficilitar, como bash-completion e crictl
+
+```bash
+# 1. Configurar o crictl
+cat << EOF | sudo tee /etc/crictl.yaml
+runtime-endpoint: unix:///var/run/containerd/containerd.sock
+image-endpoint: unix:///var/run/containerd/containerd.sock
+timeout: 10
+debug: true
+EOF
+
+# 2. bash-completion
+sudo apt-get install -y bash-completion
+kubectl completion bash | sudo tee /etc/bash_completion.d/kubectl > /dev/null
+kubeadm completion bash | sudo tee /etc/bash_completion.d/kubeadm > /dev/null
+kubelet completion bash | sudo tee /etc/bash_completion.d/kubelet > /dev/null
+crictl completion bash | sudo tee /etc/bash_completion.d/crictl > /dev/null
+sudo chmod a+r /etc/bash_completion.d/*
+source ~/.bashrc
+```
 ---
 
 ## Inicialização do Cluster
@@ -254,22 +281,7 @@ mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ```
-```bash
-kubectl completion bash | sudo tee /etc/bash_completion.d/kubectl > /dev/null
-kubeadm completion bash | sudo tee /etc/bash_completion.d/kubeadm > /dev/null
-kubelet completion bash | sudo tee /etc/bash_completion.d/kubelet > /dev/null
-crictl completion bash | sudo tee /etc/bash_completion.d/crictl > /dev/null
-sudo chmod a+r /etc/bash_completion.d/*
-source ~/.bashrc
-```
-```bash
-cat << EOF | sudo tee /etc/crictl.yaml
-runtime-endpoint: unix:///var/run/containerd/containerd.sock
-image-endpoint: unix:///var/run/containerd/containerd.sock
-timeout: 10
-debug: true
-EOF
-```
+
 ### 2. Worker Nodes
 
 **No Master, gere o comando de join:**  
