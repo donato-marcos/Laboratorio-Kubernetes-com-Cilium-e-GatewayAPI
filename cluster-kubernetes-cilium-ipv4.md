@@ -177,12 +177,20 @@ sudo swapoff -a
 cat <<EOF | sudo tee /etc/modules-load.d/containerd.conf
 overlay
 br_netfilter
+nf_conntrack
 EOF
 sudo modprobe overlay
 sudo modprobe br_netfilter
+sudo modprobe nf_conntrack
 
 # 4. Sysctl para Rede
 cat << EOF | sudo tee /etc/sysctl.d/99-kubernetes-ipv4.conf
+# Garante que interfaces de Pods herdem as configs de forwarding/IPv6
+net.core.devconf_inherit_init_net = 1
+
+# Aumenta o limite de rastreamento de conexões (Conntrack)
+net.netfilter.nf_conntrack_max = 196608
+
 # Permite que o Linux encaminhe pacotes entre interfaces (essencial para CNI/Cilium)
 net.ipv4.ip_forward = 1
 

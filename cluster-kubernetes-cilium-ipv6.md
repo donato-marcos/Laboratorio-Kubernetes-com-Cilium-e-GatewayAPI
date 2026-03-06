@@ -223,6 +223,7 @@ ip6table_filter
 ip6table_mangle
 ip6table_nat
 ip6table_raw
+nf_conntrack
 xt_socket
 EOF
 sudo modprobe overlay
@@ -232,10 +233,17 @@ sudo modprobe ip6table_filter
 sudo modprobe ip6table_mangle
 sudo modprobe ip6table_nat
 sudo modprobe ip6table_raw
+sudo modprobe nf_conntrack
 sudo modprobe xt_socket
 
 # 4. Sysctl para Rede
 ccat << EOF | sudo tee /etc/sysctl.d/99-kubernetes-ipv6.conf
+# Garante que interfaces de Pods herdem as configs de forwarding/IPv6
+net.core.devconf_inherit_init_net = 1
+
+# Aumenta o limite de rastreamento de conexões (Conntrack)
+net.netfilter.nf_conntrack_max = 196608
+
 # Encaminhamento necessário para o CNI e K8s
 net.ipv6.conf.all.forwarding = 1
 net.ipv6.conf.default.forwarding = 1
