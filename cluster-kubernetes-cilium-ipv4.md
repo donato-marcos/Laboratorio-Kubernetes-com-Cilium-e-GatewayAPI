@@ -182,19 +182,27 @@ sudo modprobe overlay
 sudo modprobe br_netfilter
 
 # 4. Sysctl para Rede
-cat <<EOF | sudo tee /etc/sysctl.d/99-kubernetes-cri.conf
-net.ipv4.conf.all.forwarding = 1
-net.bridge.bridge-nf-call-iptables = 1
-net.ipv6.conf.all.forwarding = 1
-net.bridge.bridge-nf-call-ip6tables = 1
+cat << EOF | sudo tee /etc/sysctl.d/99-kubernetes-ipv4.conf
+# Permite que o Linux encaminhe pacotes entre interfaces (essencial para CNI/Cilium)
+net.ipv4.ip_forward = 1
 
+# Melhora a performance e evita problemas com pacotes de rotas alternativas
+net.ipv4.conf.all.forwarding = 1
+net.ipv4.conf.default.forwarding = 1
+
+# Configurações de segurança/estabilidade para o cluster
 net.ipv4.conf.all.rp_filter = 0
 net.ipv4.conf.default.rp_filter = 0
-net.ipv4.conf.lxc*.rp_filter = 0
-net.ipv4.conf.cilium*.rp_filter = 0
+net.ipv4.conf.cilium*.rp_filter=0
+net.ipv4.conf.lxc*.rp_filter=0
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
 
+# Tráfego pelo iptables
+net.bridge.bridge-nf-call-iptables = 1
+
+# Reserva de portas para o cluster kubernetes
 net.ipv4.ip_local_reserved_ports = 30000-32767
-
 EOF
 sudo sysctl --system
 ```

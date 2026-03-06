@@ -235,24 +235,24 @@ sudo modprobe ip6table_raw
 sudo modprobe xt_socket
 
 # 4. Sysctl para Rede
-cat <<EOF | sudo tee /etc/sysctl.d/99-kubernetes-cri.conf
-# Habilitar Forwarding (Roteamento)
+ccat << EOF | sudo tee /etc/sysctl.d/99-kubernetes-ipv6.conf
+# Encaminhamento necessário para o CNI e K8s
 net.ipv6.conf.all.forwarding = 1
+net.ipv6.conf.default.forwarding = 1
 
-# Garantir que IPv6 não esteja desabilitado no kernel
+# Garante IPv6 ativo nas interfaces
 net.ipv6.conf.all.disable_ipv6 = 0
 net.ipv6.conf.default.disable_ipv6 = 0
 
-# Aceitar RA mesmo com forwarding habilitado
+# Aceita RA para manter o Default Gateway da VM mesmo como Router (fowarding=1)
 net.ipv6.conf.all.accept_ra = 2
 net.ipv6.conf.default.accept_ra = 2
 
-# CRÍTICO: Fazer bridges respeitarem as regras de firewall do K8s
+# Tráfego pelo iptables
 net.bridge.bridge-nf-call-ip6tables = 1
 
-# Opcional, apenas para ambientes apenas IPv6
-net.ipv4.conf.all.disable_ipv4 = 1
-net.ipv4.conf.default.disable_ipv4 = 1
+# Reserva de portas para o cluster kubernetes
+net.ipv4.ip_local_reserved_ports = 30000-32767
 EOF
 sudo sysctl --system
 ```
