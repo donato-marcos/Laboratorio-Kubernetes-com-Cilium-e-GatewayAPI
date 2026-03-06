@@ -237,7 +237,7 @@ sudo modprobe nf_conntrack
 sudo modprobe xt_socket
 
 # 4. Sysctl para Rede
-ccat << EOF | sudo tee /etc/sysctl.d/99-kubernetes-ipv6.conf
+cat << EOF | sudo tee /etc/sysctl.d/99-kubernetes-ipv6.conf
 # Garante que interfaces de Pods herdem as configs de forwarding/IPv6
 net.core.devconf_inherit_init_net = 1
 
