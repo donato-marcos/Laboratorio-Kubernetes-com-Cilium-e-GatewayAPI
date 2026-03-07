@@ -20,11 +20,11 @@ O cluster possui 3 nós Ubuntu Server. A identificação correta das interfaces 
 
 | Hostname | vCPU | vRAM | Interface WAN (`enp1s0`) | Interface Cluster (`enp2s0`) | Interface Storage (`enp3s0`) |
 | :--- | :---: | :---: | :--- | :--- | :--- |
-| `k8s-master01` | 2 | 2.5 GB | `2804:14d:3280:46c4::11` | `fd00:172:16:200::11` | `fd00:172:16:201::11` |
-| `k8s-worker01` | 2 | 3.0 GB | `2804:14d:3280:46c4::21` | `fd00:172:16:200::21` | `fd00:172:16:201::21` |
-| `k8s-worker02` | 2 | 3.0 GB | `2804:14d:3280:46c4::22` | `fd00:172:16:200::22` | `fd00:172:16:201::22` |
+| `k8s-master01` | 2 | 2.5 GB | `2804:abcd:ef::11` | `fd00:172:16:200::11` | `fd00:172:16:201::11` |
+| `k8s-worker01` | 2 | 3.0 GB | `2804:abcd:ef::21` | `fd00:172:16:200::21` | `fd00:172:16:201::21` |
+| `k8s-worker02` | 2 | 3.0 GB | `2804:abcd:ef::22` | `fd00:172:16:200::22` | `fd00:172:16:201::22` |
 
-> **Nota de Rede:** O IP `2804:14d:3280:46c4::9` será reservado para o **Cilium LoadBalancer**, atuando como VIP único para serviços externos. O anúncio L2 será feito na interface **`enp1s0`**.
+> **Nota de Rede:** O IP `2804:abcd:ef::9` será reservado para o **Cilium LoadBalancer**, atuando como VIP único para serviços externos. O anúncio L2 será feito na interface **`enp1s0`**.
 
 ---
 
@@ -89,7 +89,7 @@ vms = {
     networks = [
       {
         name         = "bridge0"
-        ipv6_address = "2804:14d:3280:46c4::11"
+        ipv6_address = "2804:abcd:ef::11"
         ipv6_prefix  = 64
         wait_for_lease = true
       },
@@ -132,7 +132,7 @@ vms = {
     networks = [
       {
         name         = "bridge0"
-        ipv6_address = "2804:14d:3280:46c4::21"
+        ipv6_address = "2804:abcd:ef::21"
         ipv6_prefix  = 64
         wait_for_lease = true
       },
@@ -175,7 +175,7 @@ vms = {
     networks = [
       {
         name         = "bridge0"
-        ipv6_address = "2804:14d:3280:46c4::22"
+        ipv6_address = "2804:abcd:ef::22"
         ipv6_prefix  = 64
         wait_for_lease = true
       },
@@ -363,7 +363,7 @@ networking:
 apiServer:
   certSANs:
     - "fd00:172:16:200::11"
-    - "2804:14d:3280:46c4::11"
+    - "2804:abcd:ef::11"
   extraArgs:
     - name: "bind-address"
       value: "::"
@@ -623,7 +623,7 @@ metadata:
   name: "public-pool-ipv6"
 spec:
   blocks:
-    - cidr: "2804:14d:3280:46c4::9/128"
+    - cidr: "2804:abcd:ef::9/128"
 ---
 apiVersion: "cilium.io/v2alpha1"
 kind: CiliumL2AnnouncementPolicy
@@ -652,7 +652,7 @@ metadata:
   name: public-gateway-ipv6
   namespace: default
   annotations:
-    io.cilium/lb-ipam-ips: "2804:14d:3280:46c4::9"
+    io.cilium/lb-ipam-ips: "2804:abcd:ef::9"
 spec:
   gatewayClassName: cilium
   listeners:
@@ -744,8 +744,8 @@ kubectl apply -f monitoring-httproutes.yaml
 
 No seu host Fedora, edite `/etc/hosts`:
 ```bash
-echo "2804:14d:3280:46c4::9 hubble.aesthar.com.br" | sudo tee -a /etc/hosts
-echo "2804:14d:3280:46c4::9 grafana.aesthar.com.br" | sudo tee -a /etc/hosts
+echo "2804:abcd:ef::9 hubble.aesthar.com.br" | sudo tee -a /etc/hosts
+echo "2804:abcd:ef::9 grafana.aesthar.com.br" | sudo tee -a /etc/hosts
 
 ```
 
@@ -761,7 +761,7 @@ Acesse:
 # Verificar se o Cilium está saudável
 cilium status
 
-# Verificar se o IP 2804:14d:3280:46c4::9 foi atribuído ao Gateway
+# Verificar se o IP 2804:abcd:ef::9 foi atribuído ao Gateway
 kubectl get gateway public-gateway-ipv6
 
 # Verificar serviços
