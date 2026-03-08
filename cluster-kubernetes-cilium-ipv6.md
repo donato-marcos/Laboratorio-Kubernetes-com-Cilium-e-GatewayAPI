@@ -319,6 +319,10 @@ kubelet completion bash | sudo tee /etc/bash_completion.d/kubelet > /dev/null
 crictl completion bash | sudo tee /etc/bash_completion.d/crictl > /dev/null
 sudo chmod a+r /etc/bash_completion.d/*
 source ~/.bashrc
+
+# 3. Alias
+echo 'alias k=kubectl' >>~/.bashrc
+echo 'complete -o default -F __start_kubectl k' >>~/.bashrc
 ```
 
 ---
