@@ -218,21 +218,11 @@ sudo swapoff -a
 cat <<EOF | sudo tee /etc/modules-load.d/containerd.conf
 overlay
 br_netfilter
-ip6_tables
-ip6table_filter
-ip6table_mangle
-ip6table_nat
-ip6table_raw
 nf_conntrack
 xt_socket
 EOF
 sudo modprobe overlay
 sudo modprobe br_netfilter
-sudo modprobe ip6_tables
-sudo modprobe ip6table_filter
-sudo modprobe ip6table_mangle
-sudo modprobe ip6table_nat
-sudo modprobe ip6table_raw
 sudo modprobe nf_conntrack
 sudo modprobe xt_socket
 
@@ -247,6 +237,7 @@ net.netfilter.nf_conntrack_max = 196608
 # Encaminhamento necessário para o CNI e K8s
 net.ipv6.conf.all.forwarding = 1
 net.ipv6.conf.default.forwarding = 1
+net.ipv6.conf.enp1s0.forwarding = 1
 
 # Garante IPv6 ativo nas interfaces
 net.ipv6.conf.all.disable_ipv6 = 0
@@ -255,13 +246,12 @@ net.ipv6.conf.default.disable_ipv6 = 0
 # Aceita RA para manter o Default Gateway da VM mesmo como Router (fowarding=1)
 net.ipv6.conf.all.accept_ra = 2
 net.ipv6.conf.default.accept_ra = 2
+net.ipv6.conf.enp1s0.accept_ra = 2
 
 # Aceita NDP
-net.ipv6.conf.all.proxy_ndp = 2
-net.ipv6.conf.default.proxy_ndp = 2
-
-# Tráfego pelo iptables
-net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv6.conf.all.proxy_ndp = 1
+net.ipv6.conf.default.proxy_ndp = 1
+net.ipv6.conf.enp1s0.proxy_ndp = 1
 
 # Reserva de portas para o cluster kubernetes
 net.ipv4.ip_local_reserved_ports = 30000-32767
@@ -364,9 +354,10 @@ certificatesDir: /etc/kubernetes/pki
 controlPlaneEndpoint: "[fd00:172:16:200::11]:6443"
 
 networking:
-  serviceSubnet: "fd00:10:96::/112"
+  serviceSubnet: "fd00:10:96::/108"
   podSubnet: "fd00:10:244::/56"
   dnsDomain: "cluster.aesthar.com.br"
+  ipFamilyPolicy: SingleStack
 
 apiServer:
   certSANs:
@@ -384,7 +375,7 @@ controllerManager:
       value: "::"
     - name: "allocate-node-cidrs"
       value: "true"
-    - name: "node-cidr-mask-size"
+    - name: "node-cidr-mask-size-ipv6"
       value: "64"
 
 scheduler:
@@ -471,8 +462,6 @@ kubectl apply --server-side -f https://github.com/prometheus-operator/prometheus
 
 Configurado para usar `enp1s0` como dispositivo principal para anúncios externos e `enp2s0` para roteamento nativo interno (se necessário ajustar, o Cilium detecta rotas, mas o `devices` deve apontar para a interface física de uplink geral ou específica para BPF).
 
-Neste caso, como temos múltiplas interfaces, vamos definir `devices=enp1s0` para garantir que o LoadBalancer funcione na rede WAN, e o Cilium gerenciará o roteamento entre os pods.
-
 ```bash
 # Cilium CLI
 CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
@@ -502,8 +491,11 @@ enableIPv4Masquerade: false
 
 ipv6:
   enabled: true
-enableIPv6Masquerade: true
+  enableIPv6NDP: true
+  mcastDevice: "enp1s0"
 
+# --- Masquerade ---
+enableIPv6Masquerade: true
 masqueradeInterfaces: "enp1s0"
 
 # --- kube-proxy replacement ---
@@ -514,17 +506,14 @@ kubeProxyReplacement: true
 
 # --- Datapath & Roteamento Nativo ---
 # Inclui ambas as interfaces relevantes: WAN (para LB) e Cluster (para Pods)
-devices:
-  - enp2s0
-  - enp1s0
+devices: "enp1s0,enp2s0"
 
-extraConfig:
-  enable-ipv6-ndp: "true"
-  ipv6-mcast-device: "enp1s0"
+#extraConfig:
+#  enable-ipv6-ndp: "true"
+#  ipv6-mcast-device: "enp1s0"
   
 routingMode: native
 autoDirectNodeRoutes: true
-directRoutingSkipUnreachable: true
 
 # Define os CIDRs globais para roteamento nativo (opcional se o IPAM já estiver correto, mas bom para explícito)
 ipv6NativeRoutingCIDR: "fd00:10:244::/56"
@@ -545,9 +534,6 @@ cluster:
 # --- L2 Announcements (Substitui MetalLB) ---
 l2announcements:
   enabled: true
-  # Anuncia VIPs apenas na interface WAN (enp1s0) para IPv4 e IPv6
-  interfaces:
-    - "enp1s0"
 
 l2NeighDiscovery:
   enabled: true
@@ -602,7 +588,7 @@ bpf:
 # Comando: # ethtool -k <NIC> | grep -E "segmentation|receive"
 # TSO, GSO e GRO devem estar `on`
 #enableIPv4BIGTCP: true
-#enableIPv6BIGTCP: true
+enableIPv6BIGTCP: true
 ```
 
 Instale o CNI Cilium:
@@ -611,7 +597,7 @@ helm repo add cilium https://helm.cilium.io/
 helm repo update
 
 helm install cilium cilium/cilium \
---version 1.19.1 \
+--version 1.20.0-pre.0 \
 --namespace kube-system \
 -f cilium-values.yaml
 ```
@@ -647,7 +633,8 @@ spec:
       - key: node-role.kubernetes.io/control-plane
         operator: DoesNotExist
   interfaces:
-    - ^p1s0$
+    - ^enp1s0$
+  externalIPs: true
   loadBalancerIPs: true
 ```
 E aplique com:
@@ -663,10 +650,11 @@ kind: Gateway
 metadata:
   name: public-gateway-ipv6
   namespace: default
-  annotations:
-    io.cilium/lb-ipam-ips: "2804:abcd:ef::9"
 spec:
   gatewayClassName: cilium
+  addresses:
+  - type: IPAddress
+    value: 2804:abcd:ef::9
   listeners:
   - name: http
     port: 80
