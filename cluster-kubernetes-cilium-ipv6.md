@@ -256,6 +256,10 @@ net.ipv6.conf.default.disable_ipv6 = 0
 net.ipv6.conf.all.accept_ra = 2
 net.ipv6.conf.default.accept_ra = 2
 
+# Aceita NDP
+net.ipv6.conf.all.proxy_ndp = 2
+net.ipv6.conf.default.proxy_ndp = 2
+
 # Tráfego pelo iptables
 net.bridge.bridge-nf-call-ip6tables = 1
 
@@ -513,6 +517,10 @@ kubeProxyReplacement: true
 devices:
   - enp2s0
   - enp1s0
+
+extraConfig:
+  enable-ipv6-ndp: "true"
+  ipv6-mcast-device: "enp1s0"
   
 routingMode: native
 autoDirectNodeRoutes: true
@@ -639,7 +647,7 @@ spec:
       - key: node-role.kubernetes.io/control-plane
         operator: DoesNotExist
   interfaces:
-    - enp1s0
+    - ^p1s0$
   loadBalancerIPs: true
 ```
 E aplique com:
