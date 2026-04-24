@@ -20,11 +20,16 @@ O cluster possui 3 nós Ubuntu Server. A identificação correta das interfaces 
 
 | Hostname | vCPU | vRAM | Interface WAN (`enp1s0`) | Interface Cluster (`enp2s0`) | Interface Storage (`enp3s0`) |
 | :--- | :---: | :---: | :--- | :--- | :--- |
-| `k8s-master01` | 2 | 2.5 GB | `2804:abcd:ef::11` | `fd00:172:16:200::11` | `fd00:172:16:201::11` |
-| `k8s-worker01` | 2 | 3.0 GB | `2804:abcd:ef::21` | `fd00:172:16:200::21` | `fd00:172:16:201::21` |
-| `k8s-worker02` | 2 | 3.0 GB | `2804:abcd:ef::22` | `fd00:172:16:200::22` | `fd00:172:16:201::22` |
+| `k8s-master01` | 2 | 2.5 GB | `2804:14d:3280:403a::11` | `fd00:172:16:200::11` | `fd00:172:16:201::11` |
+| `k8s-worker01` | 2 | 3.0 GB | `2804:14d:3280:403a::21` | `fd00:172:16:200::21` | `fd00:172:16:201::21` |
+| `k8s-worker02` | 2 | 3.0 GB | `2804:14d:3280:403a::22` | `fd00:172:16:200::22` | `fd00:172:16:201::22` |
 
-> **Nota de Rede:** O IP `2804:abcd:ef::9` será reservado para o **Cilium LoadBalancer**, atuando como VIP único para serviços externos. O anúncio L2 será feito na interface **`enp1s0`**.
+> **Nota de Rede:** O IP `2804:14d:3280:403a::9` será reservado para o **Cilium LoadBalancer**, atuando como VIP único para serviços externos. O anúncio L2 será feito na interface **`enp1s0`**.
+
+> *Pode ser necessário desabilitar o multicast_snooping na placa de rede o seu host de virtualização*.
+>```bash
+>echo 0 | sudo tee /sys/class/net/bridge0/bridge/multicast_snooping
+>```
 
 ---
 
@@ -61,12 +66,14 @@ networks = [
 
 Note a ordem das redes definidas, que resulta nas interfaces `enp1s0`, `enp2s0` e `enp3s0` dentro das VMs.
 
+> AJUSTE O ENDEREÇAMENTO IP NA INTERFACE `enp1s0` QUE VAI USAR A BRIDGE
+
 ```hcl
 # vm.auto.tfvars:
 vms = {
 
   # Servidor kubernetes control-plane
-  "k8s-master01" = {
+  "k8s-master012" = {
     os_type     = "linux"
     vcpus       = 2
     memory      = 4096
@@ -88,19 +95,21 @@ vms = {
     ]
     networks = [
       {
-        name         = "bridge0"
-        ipv6_address = "2804:abcd:ef::11"
-        ipv6_prefix  = 64
-        wait_for_lease = true
+        name           = "bridge0"
+        ipv6_address   = "2804:14d:3280:403a::11"
+        ipv6_prefix    = 64
+        ipv6_gateway   = "fe80::523d:d1ff:fea5:b018"
+        dns_servers  = ["2001:4860:4860::8888","2606:4700:4700::111"]
+        wait_for_lease = false
       },
       {
-        name           = "k8s-cluster"
+        name           = "k8s-cluster2"
         ipv6_address   = "fd00:172:16:200::11"
         ipv6_prefix    = 64
         wait_for_lease = false
       },
       {
-        name           = "k8s-storage"
+        name           = "k8s-storage2"
         ipv6_address   = "fd00:172:16:201::11"
         ipv6_prefix    = 64
         wait_for_lease = false
@@ -109,7 +118,7 @@ vms = {
   },
 
   # Servidor kubernetes worker
-  "k8s-worker01" = {
+  "k8s-worker012" = {
     os_type     = "linux"
     vcpus       = 2
     memory      = 8192
@@ -131,19 +140,21 @@ vms = {
     ]
     networks = [
       {
-        name         = "bridge0"
-        ipv6_address = "2804:abcd:ef::21"
-        ipv6_prefix  = 64
-        wait_for_lease = true
+        name           = "bridge0"
+        ipv6_address   = "2804:14d:3280:403a::21"
+        ipv6_prefix    = 64
+        ipv6_gateway   = "fe80::523d:d1ff:fea5:b018"
+        dns_servers  = ["2001:4860:4860::8888","2606:4700:4700::111"]
+        wait_for_lease = false
       },
       {
-        name           = "k8s-cluster"
+        name           = "k8s-cluster2"
         ipv6_address   = "fd00:172:16:200::21"
         ipv6_prefix    = 64
         wait_for_lease = false
       },
       {
-        name           = "k8s-storage"
+        name           = "k8s-storage2"
         ipv6_address   = "fd00:172:16:201::21"
         ipv6_prefix    = 64
         wait_for_lease = false
@@ -152,7 +163,7 @@ vms = {
   },
 
   # Servidor kubernetes worker
-  "k8s-worker02" = {
+  "k8s-worker022" = {
     os_type     = "linux"
     vcpus       = 2
     memory      = 8192
@@ -174,19 +185,21 @@ vms = {
     ]
     networks = [
       {
-        name         = "bridge0"
-        ipv6_address = "2804:abcd:ef::22"
-        ipv6_prefix  = 64
-        wait_for_lease = true
+        name           = "bridge0"
+        ipv6_address   = "2804:14d:3280:403a::22"
+        ipv6_prefix    = 64
+        ipv6_gateway   = "fe80::523d:d1ff:fea5:b018"
+        dns_servers  = ["2001:4860:4860::8888","2606:4700:4700::111"]
+        wait_for_lease = false
       },
       {
-        name           = "k8s-cluster"
+        name           = "k8s-cluster2"
         ipv6_address   = "fd00:172:16:200::22"
         ipv6_prefix    = 64
         wait_for_lease = false
       },
       {
-        name           = "k8s-storage"
+        name           = "k8s-storage2"
         ipv6_address   = "fd00:172:16:201::22"
         ipv6_prefix    = 64
         wait_for_lease = false
@@ -216,11 +229,31 @@ sudo swapoff -a
 
 # 3. Módulos do Kernel
 cat <<EOF | sudo tee /etc/modules-load.d/containerd.conf
+ip_tables
+iptable_filter
+iptable_mangle
+iptable_nat
+iptable_raw
+ip6_tables
+ip6table_filter
+ip6table_mangle
+ip6table_nat
+ip6table_raw
 overlay
 br_netfilter
 nf_conntrack
 xt_socket
 EOF
+sudo modprobe ip_tables
+sudo modprobe iptable_filter
+sudo modprobe iptable_mangle
+sudo modprobe iptable_nat
+sudo modprobe iptable_raw
+sudo modprobe ip6_tables
+sudo modprobe ip6table_filter
+sudo modprobe ip6table_mangle
+sudo modprobe ip6table_nat
+sudo modprobe ip6table_raw
 sudo modprobe overlay
 sudo modprobe br_netfilter
 sudo modprobe nf_conntrack
@@ -228,6 +261,11 @@ sudo modprobe xt_socket
 
 # 4. Sysctl para Rede
 cat << EOF | sudo tee /etc/sysctl.d/99-kubernetes-ipv6.conf
+# Configurando bridges
+net.bridge.bridge-nf-call-arptables = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+
 # Garante que interfaces de Pods herdem as configs de forwarding/IPv6
 net.core.devconf_inherit_init_net = 1
 
@@ -242,10 +280,10 @@ net.ipv6.conf.enp1s0.forwarding = 1
 # Garante IPv6 ativo nas interfaces
 net.ipv6.conf.all.disable_ipv6 = 0
 net.ipv6.conf.default.disable_ipv6 = 0
+net.ipv6.conf.enp1s0.disable_ipv6 = 0
+net.ipv6.conf.lo.disable_ipv6 = 0
 
 # Aceita RA para manter o Default Gateway da VM mesmo como Router (fowarding=1)
-net.ipv6.conf.all.accept_ra = 2
-net.ipv6.conf.default.accept_ra = 2
 net.ipv6.conf.enp1s0.accept_ra = 2
 
 # Aceita NDP
@@ -276,7 +314,7 @@ sudo systemctl enable --now containerd
 
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml
-sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+sudo sed -i 's/\(^\s*SystemdCgroup\s*=\s*\).*/\1true/g' /etc/containerd/config.toml
 sudo systemctl restart containerd
 sudo grep "SystemdCgroup" /etc/containerd/config.toml
 ```
@@ -362,7 +400,7 @@ networking:
 apiServer:
   certSANs:
     - "fd00:172:16:200::11"
-    - "2804:abcd:ef::11"
+    - "2804:14d:3280:403a::11"
   extraArgs:
     - name: "bind-address"
       value: "::"
@@ -491,11 +529,8 @@ enableIPv4Masquerade: false
 
 ipv6:
   enabled: true
-  enableIPv6NDP: true
-  mcastDevice: "enp1s0"
-
-# --- Masquerade ---
 enableIPv6Masquerade: true
+
 masqueradeInterfaces: "enp1s0"
 
 # --- kube-proxy replacement ---
@@ -508,9 +543,9 @@ kubeProxyReplacement: true
 # Inclui ambas as interfaces relevantes: WAN (para LB) e Cluster (para Pods)
 devices: "enp1s0,enp2s0"
 
-#extraConfig:
-#  enable-ipv6-ndp: "true"
-#  ipv6-mcast-device: "enp1s0"
+extraConfig:
+  enable-ipv6-ndp: "true"
+  ipv6-mcast-device: "enp1s0"
   
 routingMode: native
 autoDirectNodeRoutes: true
@@ -527,6 +562,8 @@ ipam:
       - "fd00:10:244::/56"
     clusterPoolIPv6MaskSize: 64
 
+tunnel: disabled
+
 cluster:
   name: k8s-cluster
   id: 1
@@ -537,6 +574,17 @@ l2announcements:
 
 l2NeighDiscovery:
   enabled: true
+
+loadBalancer:
+  mode: snat
+
+externalIPs:
+  enabled: true
+
+nodePort:
+  enabled: true
+
+MTU: 1400
 
 # --- Gateway API (Substitui Ingress-Nginx) ---
 gatewayAPI:
@@ -621,7 +669,7 @@ metadata:
   name: "public-pool-ipv6"
 spec:
   blocks:
-    - cidr: "2804:abcd:ef::9/128"
+    - cidr: "2804:14d:3280:403a::9/128"
 ---
 apiVersion: "cilium.io/v2alpha1"
 kind: CiliumL2AnnouncementPolicy
@@ -629,9 +677,8 @@ metadata:
   name: "public-announcement-ipv6"
 spec:
   nodeSelector:
-    matchExpressions:
-      - key: node-role.kubernetes.io/control-plane
-        operator: DoesNotExist
+    matchLabels:
+      - kubernetes.io/os: linux
   interfaces:
     - ^enp1s0$
   externalIPs: true
@@ -654,7 +701,7 @@ spec:
   gatewayClassName: cilium
   addresses:
   - type: IPAddress
-    value: 2804:abcd:ef::9
+    value: 2804:14d:3280:403a::9
   listeners:
   - name: http
     port: 80
@@ -744,8 +791,8 @@ kubectl apply -f monitoring-httproutes.yaml
 
 No seu host Fedora, edite `/etc/hosts`:
 ```bash
-echo "2804:abcd:ef::9 hubble.aesthar.com.br" | sudo tee -a /etc/hosts
-echo "2804:abcd:ef::9 grafana.aesthar.com.br" | sudo tee -a /etc/hosts
+echo "2804:14d:3280:403a::9 hubble.aesthar.com.br" | sudo tee -a /etc/hosts
+echo "2804:14d:3280:403a::9 grafana.aesthar.com.br" | sudo tee -a /etc/hosts
 
 ```
 
@@ -761,7 +808,7 @@ Acesse:
 # Verificar se o Cilium está saudável
 cilium status
 
-# Verificar se o IP 2804:abcd:ef::9 foi atribuído ao Gateway
+# Verificar se o IP 2804:14d:3280:403a::9 foi atribuído ao Gateway
 kubectl get gateway public-gateway-ipv6
 
 # Verificar serviços
