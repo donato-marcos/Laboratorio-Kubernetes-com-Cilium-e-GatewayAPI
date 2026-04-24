@@ -20,11 +20,11 @@ O cluster possui 3 nós Ubuntu Server. A identificação correta das interfaces 
 
 | Hostname | vCPU | vRAM | Interface WAN (`enp1s0`) | Interface Cluster (`enp2s0`) | Interface Storage (`enp3s0`) |
 | :--- | :---: | :---: | :--- | :--- | :--- |
-| `k8s-master01` | 2 | 2.5 GB | `2804:14d:3280:403a::11` | `fd00:172:16:200::11` | `fd00:172:16:201::11` |
-| `k8s-worker01` | 2 | 3.0 GB | `2804:14d:3280:403a::21` | `fd00:172:16:200::21` | `fd00:172:16:201::21` |
-| `k8s-worker02` | 2 | 3.0 GB | `2804:14d:3280:403a::22` | `fd00:172:16:200::22` | `fd00:172:16:201::22` |
+| `k8s-master01` | 2 | 2.5 GB | `2804:abcd:ef::11` | `fd00:172:16:200::11` | `fd00:172:16:201::11` |
+| `k8s-worker01` | 2 | 3.0 GB | `2804:abcd:ef::21` | `fd00:172:16:200::21` | `fd00:172:16:201::21` |
+| `k8s-worker02` | 2 | 3.0 GB | `2804:abcd:ef::22` | `fd00:172:16:200::22` | `fd00:172:16:201::22` |
 
-> **Nota de Rede:** O IP `2804:14d:3280:403a::9` será reservado para o **Cilium LoadBalancer**, atuando como VIP único para serviços externos. O anúncio L2 será feito na interface **`enp1s0`**.
+> **Nota de Rede:** O IP `2804:abcd:ef::9` será reservado para o **Cilium LoadBalancer**, atuando como VIP único para serviços externos. O anúncio L2 será feito na interface **`enp1s0`**.
 
 > *Pode ser necessário desabilitar o multicast_snooping na placa de rede o seu host de virtualização*.
 >```bash
@@ -96,7 +96,7 @@ vms = {
     networks = [
       {
         name           = "bridge0"
-        ipv6_address   = "2804:14d:3280:403a::11"
+        ipv6_address   = "2804:abcd:ef::11"
         ipv6_prefix    = 64
         ipv6_gateway   = "fe80::523d:d1ff:fea5:b018"
         dns_servers  = ["2001:4860:4860::8888","2606:4700:4700::111"]
@@ -141,7 +141,7 @@ vms = {
     networks = [
       {
         name           = "bridge0"
-        ipv6_address   = "2804:14d:3280:403a::21"
+        ipv6_address   = "2804:abcd:ef::21"
         ipv6_prefix    = 64
         ipv6_gateway   = "fe80::523d:d1ff:fea5:b018"
         dns_servers  = ["2001:4860:4860::8888","2606:4700:4700::111"]
@@ -186,7 +186,7 @@ vms = {
     networks = [
       {
         name           = "bridge0"
-        ipv6_address   = "2804:14d:3280:403a::22"
+        ipv6_address   = "2804:abcd:ef::22"
         ipv6_prefix    = 64
         ipv6_gateway   = "fe80::523d:d1ff:fea5:b018"
         dns_servers  = ["2001:4860:4860::8888","2606:4700:4700::111"]
@@ -400,7 +400,7 @@ networking:
 apiServer:
   certSANs:
     - "fd00:172:16:200::11"
-    - "2804:14d:3280:403a::11"
+    - "2804:abcd:ef::11"
   extraArgs:
     - name: "bind-address"
       value: "::"
@@ -669,7 +669,7 @@ metadata:
   name: "public-pool-ipv6"
 spec:
   blocks:
-    - cidr: "2804:14d:3280:403a::9/128"
+    - cidr: "2804:abcd:ef::9/128"
 ---
 apiVersion: "cilium.io/v2alpha1"
 kind: CiliumL2AnnouncementPolicy
@@ -701,7 +701,7 @@ spec:
   gatewayClassName: cilium
   addresses:
   - type: IPAddress
-    value: 2804:14d:3280:403a::9
+    value: 2804:abcd:ef::9
   listeners:
   - name: http
     port: 80
@@ -791,8 +791,8 @@ kubectl apply -f monitoring-httproutes.yaml
 
 No seu host Fedora, edite `/etc/hosts`:
 ```bash
-echo "2804:14d:3280:403a::9 hubble.aesthar.com.br" | sudo tee -a /etc/hosts
-echo "2804:14d:3280:403a::9 grafana.aesthar.com.br" | sudo tee -a /etc/hosts
+echo "2804:abcd:ef::9 hubble.aesthar.com.br" | sudo tee -a /etc/hosts
+echo "2804:abcd:ef::9 grafana.aesthar.com.br" | sudo tee -a /etc/hosts
 
 ```
 
@@ -808,7 +808,7 @@ Acesse:
 # Verificar se o Cilium está saudável
 cilium status
 
-# Verificar se o IP 2804:14d:3280:403a::9 foi atribuído ao Gateway
+# Verificar se o IP 2804:abcd:ef::9 foi atribuído ao Gateway
 kubectl get gateway public-gateway-ipv6
 
 # Verificar serviços
