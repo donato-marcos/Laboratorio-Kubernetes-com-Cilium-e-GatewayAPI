@@ -1,5 +1,5 @@
 
-# Laboratório Kubernetes com Cilium e GatewayAPI
+># Laboratório Kubernetes com Cilium e GatewayAPI
 
 Este repositório documenta a implementação de um cluster Kubernetes robusto, utilizando **Cilium** como CNI (substituindo kube-proxy), **Gateway API** para gerenciamento de tráfego e uma stack completa de monitoramento com **Prometheus** e **Hubble**.
 
@@ -61,6 +61,8 @@ networks = [
 ### 2. Definição das VMs (`vm.auto.tfvars`)
 
 Note a ordem das redes definidas, que resulta nas interfaces `enp1s0`, `enp2s0` e `enp3s0` dentro das VMs.
+
+> AJUSTE O ENDEREÇAMENTO IP NA INTERFACE `enp1s0` QUE VAI USAR A BRIDGE
 
 ```hcl
 # vm.auto.tfvars:
@@ -165,52 +167,77 @@ Execute em **todos os nós** (`master` e `workers`).
 
 ```bash
 # 1. Definir Hostname
-sudo hostnamectl hostname kube-master01    # Para o control-plane
-sudo hostnamectl hostname kube-worker01    # Para o worker 1
-sudo hostnamectl hostname kube-worker02    # Para o worker 2
+sudo hostnamectl hostname k8s-master01    # Para o control-plane
+sudo hostnamectl hostname k8s-worker01    # Para o worker 1
+sudo hostnamectl hostname k8s-worker02    # Para o worker 2
+```
 
+
+```bash
 # 2. Desativar Swap
 sudo sed -i '/swap/d' /etc/fstab
 sudo swapoff -a
 
 # 3. Módulos do Kernel
-cat <<EOF | sudo tee /etc/modules-load.d/containerd.conf
-overlay
+sudo tee /etc/modules-load.d/containerd.conf > /dev/null << 'EOF'
 br_netfilter
+cls_bpf
+ip_tables
+ip6_tables
 nf_conntrack
+overlay
+sch_ingress
+sch_fq
+xt_CT
+xt_mark
+xt_socket
+xt_TPROXY
 EOF
-sudo modprobe overlay
-sudo modprobe br_netfilter
-sudo modprobe nf_conntrack
+sudo systemctl restart systemd-modules-load.service > /dev/null
 
 # 4. Sysctl para Rede
-cat << EOF | sudo tee /etc/sysctl.d/99-kubernetes-ipv4.conf
+sudo tee /etc/sysctl.d/99-kubernetes-ipv6.conf > /dev/null << 'EOF'
+# Configurando bridges
+net.bridge.bridge-nf-call-arptables = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+
 # Garante que interfaces de Pods herdem as configs de forwarding/IPv6
 net.core.devconf_inherit_init_net = 1
 
 # Aumenta o limite de rastreamento de conexões (Conntrack)
-net.netfilter.nf_conntrack_max = 196608
+net.netfilter.nf_conntrack_max = 1048576
 
-# Permite que o Linux encaminhe pacotes entre interfaces (essencial para CNI/Cilium)
+# Encaminhamento necessário para o CNI e K8s
 net.ipv4.ip_forward = 1
-
-# Melhora a performance e evita problemas com pacotes de rotas alternativas
 net.ipv4.conf.all.forwarding = 1
 net.ipv4.conf.default.forwarding = 1
+net.ipv4.conf.enp1s0.forwarding = 1
+#net.ipv6.conf.all.forwarding = 1
+#net.ipv6.conf.default.forwarding = 1
+#net.ipv6.conf.enp1s0.forwarding = 1
 
-# Configurações de segurança/estabilidade para o cluster
-net.ipv4.conf.all.rp_filter = 0
-net.ipv4.conf.default.rp_filter = 0
-net.ipv4.conf.cilium*.rp_filter=0
-net.ipv4.conf.lxc*.rp_filter=0
-net.ipv4.conf.all.accept_redirects = 0
-net.ipv4.conf.default.accept_redirects = 0
+# Garante IPv6 ativo nas interfaces
+#net.ipv6.conf.all.disable_ipv6 = 0
+#net.ipv6.conf.default.disable_ipv6 = 0
+#net.ipv6.conf.enp1s0.disable_ipv6 = 0
+#net.ipv6.conf.lo.disable_ipv6 = 0
 
-# Tráfego pelo iptables
-net.bridge.bridge-nf-call-iptables = 1
+# Aceita RA para manter o Default Gateway da VM mesmo como Router (fowarding=1)
+#net.ipv6.conf.enp1s0.accept_ra = 2
+
+# Aceita NDP
+#net.ipv6.conf.all.proxy_ndp = 1
+#net.ipv6.conf.default.proxy_ndp = 1
+#net.ipv6.conf.enp1s0.proxy_ndp = 1
 
 # Reserva de portas para o cluster kubernetes
 net.ipv4.ip_local_reserved_ports = 30000-32767
+
+# Para compatibilidade
+net.ipv4.conf.all.rp_filter = 0
+net.ipv4.conf.default.rp_filter = 0
+net.ipv4.conf.enp1s0.rp_filter = 0
 EOF
 sudo sysctl --system
 ```
@@ -232,30 +259,32 @@ sudo systemctl enable --now containerd
 
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml
-sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+sudo sed -i 's/\(^\s*SystemdCgroup\s*=\s*\).*/\1true/g' /etc/containerd/config.toml
 sudo systemctl restart containerd
-sudo grep "SystemdCgroup" /etc/containerd/config.toml
+sudo grep --color "SystemdCgroup" /etc/containerd/config.toml
 ```
 
-### 3. Instalação do Kubernetes (v1.35)
+### 3. Instalação do Kubernetes (v1.36)
 
 ```bash
-sudo apt-get update
 sudo apt-get install -y apt-transport-https ca-certificates curl gpg
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.35/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.36/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
-echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.36/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
 
 sudo apt-get update
 sudo apt-get install -y kubelet kubeadm kubectl
 sudo apt-mark hold kubelet kubeadm kubectl
+
+sudo systemctl enable --now kubelet
 ```
 
-### 4. Configurações extras para ficilitar, como bash-completion e crictl
+### 4. Configurações extras para facilitar, como bash-completion e crictl
 
 ```bash
 # 1. Configurar o crictl
-cat << EOF | sudo tee /etc/crictl.yaml
+sudo apt-get install -y cri-tools
+sudo tee /etc/crictl.yaml > /dev/null << 'EOF'
 runtime-endpoint: unix:///var/run/containerd/containerd.sock
 image-endpoint: unix:///var/run/containerd/containerd.sock
 timeout: 10
@@ -270,6 +299,10 @@ kubelet completion bash | sudo tee /etc/bash_completion.d/kubelet > /dev/null
 crictl completion bash | sudo tee /etc/bash_completion.d/crictl > /dev/null
 sudo chmod a+r /etc/bash_completion.d/*
 source ~/.bashrc
+
+# 3. Alias
+echo 'alias k=kubectl' >>~/.bashrc
+echo 'complete -o default -F __start_kubectl k' >>~/.bashrc
 ```
 
 ---
@@ -280,6 +313,7 @@ source ~/.bashrc
 
 Crie `kubeadm-config.yaml`:
 ```yaml
+cat > kubeadm-config.yaml << 'EOF'
 # kubeadm-config.yaml
 apiVersion: kubeadm.k8s.io/v1beta4
 kind: InitConfiguration
@@ -302,24 +336,55 @@ apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 
 clusterName: kubernetes
-kubernetesVersion: "v1.35.0"
+kubernetesVersion: "v1.36.0"
 certificatesDir: /etc/kubernetes/pki
 controlPlaneEndpoint: "172.16.200.65:6443"
 
 networking:
-  podSubnet: 10.244.0.0/16
-  serviceSubnet: 10.96.0.0/12
-  dnsDomain: "cluster.aesthar.com.br"
+  podSubnet: "10.244.0.0/16"
+  serviceSubnet: "10.96.0.0/12"
+  dnsDomain: "cluster.local"
 
 apiServer:
   certSANs:
-    - 172.16.200.65
-    - 192.168.0.65
+    - "172.16.200.65"
+    - "192.168.0.65"
+  extraArgs:
+    - name: "bind-address"
+      value: "::"
+    - name: "advertise-address"
+      value: "172.16.200.65"
+
+controllerManager:
+  extraArgs:
+    - name: "bind-address"
+      value: "::"
+    - name: "allocate-node-cidrs"
+      value: "true"
+    - name: "node-cidr-mask-size-ipv4"
+      value: "24"
+
+scheduler:
+  extraArgs:
+    - name: "bind-address"
+      value: "::"
 
 etcd:
   local:
     dataDir: /var/lib/etcd
+    extraArgs:
+      - name: "listen-client-urls"
+        value: "https://172.16.200.65:2379"
+      - name: "advertise-client-urls"
+        value: "https://172.16.200.65:2379"
+      - name: "listen-peer-urls"
+        value: "https://172.16.200.65:2380"
+      - name: "initial-advertise-peer-urls"
+        value: "https://172.16.200.65:2380"
+EOF
 ```
+
+> Optional: You can also perform this action beforehand using 'kubeadm config images pull'
 
 Inicialize:
 ```bash
@@ -339,7 +404,8 @@ kubeadm token create --print-join-command
 ```
 Execute o comando gerado nos workers. Alternativamente, use um arquivo join-config.yaml (lembrando de ajustar o node-ip para cada worker):
 
-```bash
+```yaml
+cat > join-cluster.yaml << 'EOF'
 # join-cluster.yaml
 apiVersion: kubeadm.k8s.io/v1beta4
 kind: JoinConfiguration
@@ -355,7 +421,8 @@ nodeRegistration:
   criSocket: "unix:///run/containerd/containerd.sock"
   kubeletExtraArgs:
     - name: "node-ip"
-      value: "<IP_DO_WORKER>"
+      value: "172.16.200.66"
+EOF
 ```
 
 ## CNI Cilium, Gateway API e Load Balancing
@@ -379,14 +446,12 @@ source ~/.bashrc
 kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml
 
 # CRD para Service Monitor
-#kubectl apply --server-side -f https://github.com/prometheus-operator/prometheus-operator/blob/main/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml
+#https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml
 ```
 
 ### 2. Deploy do Cilium (Via Helm + Values)
 
 Configurado para usar `enp1s0` como dispositivo principal para anúncios externos e `enp2s0` para roteamento nativo interno (se necessário ajustar, o Cilium detecta rotas, mas o `devices` deve apontar para a interface física de uplink geral ou específica para BPF).
-
-Neste caso, como temos múltiplas interfaces, vamos definir `devices=enp1s0` para garantir que o LoadBalancer funcione na rede WAN, e o Cilium gerenciará o roteamento entre os pods.
 
 ```bash
 # Cilium CLI
@@ -405,17 +470,17 @@ source ~/.bashrc
 
 Crie o arquivo `cilium-values.yaml`:
 ```yaml
+cat > cilium-values.yaml << 'EOF'
 # cilium-values.yaml
 # --- Kubernetes API ---
 k8sServiceHost: "172.16.200.65"
-k8sServicePort: "6443"
+k8sServicePort: 6443
 
-# --- Interfaces ---
-devices:
-  - enp1s0
-  - enp2s0
+cluster:
+  name: k8s-cluster
+  id: 1
 
-# --- IPv4/IPv6 ---
+# --- IPv4/IPv6 (Dual-Stack) ---
 ipv4:
   enabled: true
 enableIPv4Masquerade: true
@@ -424,32 +489,43 @@ ipv6:
   enabled: false
 enableIPv6Masquerade: false
 
+#masqueradeInterfaces: "enp1s0"
+
 # --- kube-proxy replacement ---
 # Substitui totalmente o kube-proxy usando eBPF
-kubeProxyReplacement: "true"
+kubeProxyReplacement: true
 #hostFirewall:
 #  enabled: true # pode deixar o lab mais complicado, cuidado.
 
 # --- Datapath & Roteamento Nativo ---
-routingMode: "native"
+# Inclui ambas as interfaces relevantes: Cluster (para Pods)
+#devices: ""
+
+#extraConfig:
+#  enable-ipv6-ndp: "true"
+#  ipv6-mcast-device: "enp1s0"
+  
+routingMode: native
 autoDirectNodeRoutes: true
-directRoutingSkipUnreachable: true
 
 # Define os CIDRs globais para roteamento nativo (opcional se o IPAM já estiver correto, mas bom para explícito)
 ipv4NativeRoutingCIDR: "10.244.0.0/16"
+#ipv6NativeRoutingCIDR: "fd00:10:244::/56"
 
 # --- IPAM (Gerenciamento de IPs) ---
 ipam:
-  mode: "kubernetes"
+  mode: kubernetes
   operator:
     # Pool IPv4: /16 dividido em /24 por nó
     clusterPoolIPv4PodCIDRList:
       - "10.244.0.0/16"
     clusterPoolIPv4MaskSize: 24
+    # Pool IPv6: /56 dividido em /64 por nó
+    #clusterPoolIPv6PodCIDRList:
+    #  - "fd00:10:244::/56"
+    #clusterPoolIPv6MaskSize: 64
 
-cluster:
-  name: "k8s-cluster"
-  id: 1
+#tunnel: disabled
 
 # --- L2 Announcements (Substitui MetalLB) ---
 l2announcements:
@@ -458,9 +534,30 @@ l2announcements:
 l2NeighDiscovery:
   enabled: true
 
+loadBalancer:
+  standalone: false
+  algorithm: maglev
+  mode: dsr
+  acceleration: best-effort
+  dsrDispatch: opt
+  serviceTopology: true
+  l7:
+    backend: envoy
+    ports: []
+
+#externalIPs:
+#  enabled: true
+
+#nodePort:
+#  enabled: true
+
+#MTU: 1400
+
 # --- Gateway API (Substitui Ingress-Nginx) ---
 gatewayAPI:
   enabled: true
+#  gatewayClass:
+#    create: "true"
 
 envoy:
   enabled: true
@@ -475,7 +572,7 @@ hubble:
   tls:
     enabled: false
   peerService:
-    clusterDomain: "cluster.aesthar.com.br"
+    clusterDomain: "cluster.local"
   metrics:
     enableOpenMetrics: true
     enabled:
@@ -492,7 +589,7 @@ hubble:
 operator:
   prometheus:
     enabled: true
-
+    
 # --- Prometheus Integrado (Opcional) ---
 # Deixado falso pois você usará a stack kube-prometheus separada
 prometheus:
@@ -507,8 +604,9 @@ bpf:
 # --- Performance BIG TCP (Precisa verificar se suas máquinas suportam ) ---
 # Comando: # ethtool -k <NIC> | grep -E "segmentation|receive"
 # TSO, GSO e GRO devem estar `on`
-#enableIPv4BIGTCP: true
+enableIPv4BIGTCP: true
 #enableIPv6BIGTCP: true
+EOF
 ```
 
 Instale o CNI Cilium:
@@ -517,7 +615,7 @@ helm repo add cilium https://helm.cilium.io/
 helm repo update
 
 helm install cilium cilium/cilium \
---version 1.19.1 \
+--version 1.19.4 \
 --namespace kube-system \
 -f cilium-values.yaml
 ```
@@ -529,61 +627,69 @@ cilium status --wait
 
 > **PODE DEMORAR BASTANTE**
 
+> **A PARTIR DAQUI, você pode querer automatizar utilizando o [ArgoCD](instalar-argocd.md)**
+
 ### 3. Configuração do LoadBalancer L2 e Gateway
 
-Crie o arquivo `l2-public-pool.yaml`:
+Crie o arquivo `l2-ipv4-pool.yaml`:
 
 ```yaml
-#l2-public-pool.yaml
-apiVersion: cilium.io/v2
+cat > l2-ipv4-pool.yaml << 'EOF'
+#l2-ipv4-pool.yaml
+apiVersion: "cilium.io/v2"
 kind: CiliumLoadBalancerIPPool
 metadata:
-  name: public-pool
+  name: public-pool-ipv4
 spec:
   blocks:
-    - cidr: 192.168.0.69/32
+    - cidr: "192.168.0.69/32"
 ---
-apiVersion: cilium.io/v2alpha1
+apiVersion: "cilium.io/v2alpha1"
 kind: CiliumL2AnnouncementPolicy
 metadata:
-  name: public-announcement
+  name: public-announcement-ipv4
 spec:
   nodeSelector:
     matchLabels:
       kubernetes.io/os: linux
   interfaces:
-    - "^enp1s0$"
+    - ^enp1s0$
+  externalIPs: true
   loadBalancerIPs: true
+EOF
 ```
 E aplique com:
 ```bash
-kubectl apply -f l2-public-pool.yaml
+kubectl apply -f l2-ipv4-pool.yaml
 ```
 
-Crie o arquivo `public-gateway.yaml`:
+Crie o arquivo `gateway-ipv4.yaml`:
 ```yaml
-# gateway.yaml
+cat > gateway-ipv4.yaml << 'EOF'
+# gateway-ipv4.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: public-gateway
+  name: public-gateway-ipv4
   namespace: default
-  annotations:
-    io.cilium/lb-ipam-ips: "192.168.0.69"
 spec:
   gatewayClassName: cilium
+  addresses:
+  - type: IPAddress
+    value: "192.168.0.69"
   listeners:
-    - name: http
-      port: 80
-      protocol: HTTP
-      allowedRoutes:
-        namespaces:
-          from: All
+  - name: http
+    port: 80
+    protocol: HTTP
+    allowedRoutes:
+      namespaces:
+        from: All
+EOF
 ```
 
 E aplique com:
 ```bash
-kubectl apply -f public-gateway.yaml
+kubectl apply -f gateway-ipv4.yaml
 ```
 ---
 
@@ -618,6 +724,7 @@ helm install monitoring prometheus-community/kube-prometheus-stack \
 Crie `monitoring-httproutes.yaml`:
 
 ```yaml
+cat > monitoring-httproute.yaml << 'EOF'
 # monitoring-httproute.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -626,7 +733,7 @@ metadata:
   namespace: kube-system
 spec:
   parentRefs:
-  - name: public-gateway
+  - name: public-gateway-ipv4
     namespace: default
   hostnames:
   - "hubble.aesthar.com.br"
@@ -642,7 +749,7 @@ metadata:
   namespace: monitoring
 spec:
   parentRefs:
-  - name: public-gateway
+  - name: public-gateway-ipv4
     namespace: default
   hostnames:
   - "grafana.aesthar.com.br"
@@ -650,10 +757,11 @@ spec:
   - backendRefs:
     - name: monitoring-grafana
       port: 80
+EOF
 ```
 E aplique com:
 ```bash
-kubectl apply -f monitoring-httproutes.yaml
+kubectl apply -f monitoring-httproute.yaml
 ```
 
 
@@ -679,7 +787,7 @@ Acesse:
 cilium status
 
 # Verificar se o IP 192.168.0.69 foi atribuído ao Gateway
-kubectl get gateway my-gateway
+kubectl get gateway public-gateway-ipv4
 
 # Verificar serviços
 kubectl get svc -n kube-system | grep cilium
